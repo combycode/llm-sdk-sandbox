@@ -1,0 +1,26 @@
+{
+  "name": "llm-sdk-sandbox",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Browser sandbox SPA for @combycode/llm-sdk — chat with model switching, smart selection, file inputs, and media outputs.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@combycode/llm-sdk": "^1.0.0",
+    "marked": "18.0.5",
+    "react": "19.2.7",
+    "react-dom": "19.2.7"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "6.0.2",
+    "typescript": "^5.6.0",
+    "vite": "8.0.16"
+  }
+}

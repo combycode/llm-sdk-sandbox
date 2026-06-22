@@ -1,0 +1,12 @@
+# Security headers for the sandbox static host (Cloudflare Pages / Netlify `_headers` format).
+# The sandbox makes DIRECT browser calls to provider APIs, so connect-src must
+# whitelist each provider origin. No inline scripts. Not embeddable anywhere.
+#
+# NOTE: validate this CSP on a staging deploy before going live — if the browser
+# bundle or a provider needs another origin, a request will fail in the console.
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'self' https://www.googletagmanager.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://api.x.ai https://openrouter.ai https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com; img-src 'self' data: blob: https://*.google-analytics.com; media-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; worker-src 'self' blob:; base-uri 'none'; object-src 'none'; form-action 'none'; frame-ancestors 'none'
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: no-referrer
+  Cross-Origin-Opener-Policy: same-origin
