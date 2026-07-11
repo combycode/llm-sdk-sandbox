@@ -21,22 +21,26 @@ export function SettingsPanel({
   return (
     <div className="settings">
       <h4>API keys (BYOK)</h4>
-      {/* autoComplete=off + a non-credential name + the password-manager opt-out
-          data-attrs stop the browser / 1Password / LastPass from offering to
-          SAVE the key. We persist it ourselves (session by default). */}
+      {/* These are `type="text"` (NOT password) so the browser password manager
+          ignores them entirely — no "save password?" prompt, no saved-credential
+          suggestions dropdown (Chrome ignores autoComplete=off on password fields).
+          The value is masked purely visually via CSS `-webkit-text-security` on
+          `.key-input`. The non-credential name + password-manager opt-out data-attrs
+          are belt-and-suspenders. We persist the key ourselves (session by default). */}
       <form autoComplete="off" onSubmit={(e) => e.preventDefault()}>
         {providers.map((p) => (
           <label key={p} className="field">
             <span>{p}</span>
             <input
-              type="password"
+              type="text"
               name={`field-${p}-x`}
               autoComplete="off"
               data-1p-ignore="true"
               data-lpignore="true"
+              data-bwignore="true"
               data-form-type="other"
               spellCheck={false}
-              className={guideProvider === p ? 'guide-pulse' : undefined}
+              className={`key-input${guideProvider === p ? ' guide-pulse' : ''}`}
               placeholder={`${p} key`}
               value={settings.apiKeys[p] ?? ''}
               onChange={(e) => setKey(p, e.target.value)}

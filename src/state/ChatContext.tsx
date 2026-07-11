@@ -7,9 +7,10 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import type { Content, Message } from '@combycode/llm-sdk';
+import type { BuiltinTool, Content, Message, Tool } from '@combycode/llm-sdk';
 import { bucketError, trackRunFailed, trackRunStarted, trackRunSucceeded } from '../lib/analytics';
 import { mediaItemToFile, prepareAttachment } from '../lib/attachments';
+import { BUILTIN_TOOLS } from '../lib/constants';
 import { generateMedia, isMediaModel } from '../lib/media';
 import { findModel } from '../lib/models';
 import { projectConversation } from '../lib/projection';
@@ -78,7 +79,11 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const updateTurn = (id: string, fn: (t: ChatTurn) => ChatTurn) =>
     setTurns((ts) => ts.map((t) => (t.id === id ? fn(t) : t)));
 
-  const reset = () => setTurns([]);
+  const reset = () => {
+    // Free retrieved-file blob URLs before dropping the turns that hold them.
+    for (const t of turnsRef.current) for (const o of t.outputs) URL.revokeObjectURL(o.url);
+    setTurns([]);
+  };
   const clearDraft = () => setDraft(null);
 
   const attachToPrompt = async (item: MediaItem) => {
@@ -163,6 +168,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       text,
       media: [],
       files: prepared.map((p) => p.file),
+      outputs: [],
     };
     const assistantTurn: ChatTurn = {
       id: newId(),
@@ -171,6 +177,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       text: '',
       media: [],
       files: [],
+      outputs: [],
       model: selectedModel,
       pending: true,
     };
@@ -214,6 +221,13 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         finalize(() => ({ media: [item] }));
         trackRunSucceeded(provider, model);
       } else {
+        // Offer only the hosted tools the user enabled AND the model supports
+        // (gated against the catalog's builtinTools — no hardcoded map).
+        const supported = info?.capabilities.builtinTools ?? [];
+        const tools: Tool[] = BUILTIN_TOOLS.filter(
+          (t) => settings.enabledTools[t.setting] && supported.includes(t.id),
+        ).map((t) => ({ type: t.id }) as BuiltinTool);
+
         await streamChat(
           selectedModel,
           history,
@@ -222,6 +236,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
             system: settings.system,
             temperature: settings.temperature ?? undefined,
             maxTokens: settings.maxTokens ?? undefined,
+            tools: tools.length ? tools : undefined,
             signal: controller.signal,
           },
           {
@@ -229,6 +244,20 @@ export function ChatProvider({ children }: { children: ReactNode }) {
               updateTurn(assistantTurn.id, (t) => ({ ...t, text: t.text + delta })),
             onMedia: (item) =>
               updateTurn(assistantTurn.id, (t) => ({ ...t, media: [...t.media, item] })),
+            onFile: (file) =>
+              updateTurn(assistantTurn.id, (t) => ({ ...t, outputs: [...t.outputs, file] })),
+            onToolStart: (tool) =>
+              updateTurn(assistantTurn.id, (t) => ({
+                ...t,
+                toolActivity: [...(t.toolActivity ?? []), { tool, running: true }],
+              })),
+            onToolEnd: (tool, payload) =>
+              updateTurn(assistantTurn.id, (t) => {
+                const act = [...(t.toolActivity ?? [])];
+                const i = act.findIndex((a) => a.tool === tool && a.running);
+                if (i >= 0) act[i] = { ...act[i], running: false, ...payload };
+                return { ...t, toolActivity: act };
+              }),
             onDone: () => {
               if (!controller.signal.aborted) {
                 finalize((t) => ({ apiContent: t.text }));

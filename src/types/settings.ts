@@ -13,4 +13,12 @@ export interface Settings {
   system: string;
   temperature: number | null;
   maxTokens: number | null;
+  /** Hosted server tools to offer the model, when the selected model supports them
+   *  (gated against the catalog's `builtinTools`). */
+  enabledTools: EnabledTools;
+}
+
+export interface EnabledTools {
+  webSearch: boolean;
+  codeInterpreter: boolean;
 }

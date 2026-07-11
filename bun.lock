@@ -5,7 +5,7 @@
     "": {
       "name": "llm-sdk-sandbox",
       "dependencies": {
-        "@combycode/llm-sdk": "^1.0.0",
+        "@combycode/llm-sdk": "^1.6.0",
         "marked": "18.0.5",
         "react": "19.2.7",
         "react-dom": "19.2.7",
@@ -20,7 +20,7 @@
     },
   },
   "packages": {
-    "@combycode/llm-sdk": ["@combycode/llm-sdk@1.0.0", "", { "optionalDependencies": { "tiktoken": "^1.0.22" }, "peerDependencies": { "typescript": ">=5.0" }, "optionalPeers": ["typescript"] }, "sha512-eLqBZM/zEIJ5tO0IpOJSG744LxNGxaJD6rU+QxutG81ZBdiIWlhsp1qI3oGxC+0Pzw5Sj2+OAmErGwGbaPdHkA=="],
+    "@combycode/llm-sdk": ["@combycode/llm-sdk@1.6.0", "", { "optionalDependencies": { "tiktoken": "^1.0.22" }, "peerDependencies": { "typescript": ">=5.0" }, "optionalPeers": ["typescript"] }, "sha512-mo6secErg7ey+8O5cO2sXY6OF7TOFQ+eXKBRZXxoFmQEd7Xqq+bMsahUwdDr4Wo9GX7s0b7PGqKza3UoPs9e4Q=="],
 
     "@emnapi/core": ["@emnapi/core@1.10.0", "", { "dependencies": { "@emnapi/wasi-threads": "1.2.1", "tslib": "^2.4.0" } }, "sha512-yq6OkJ4p82CAfPl0u9mQebQHKPJkY7WrIuk205cTYnYe+k2Z8YBh11FrbRG/H6ihirqcacOgl2BIO8oyMQLeXw=="],
 

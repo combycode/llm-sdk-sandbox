@@ -22,6 +22,8 @@ export function ComposerView({
   mediaSpecs,
   mediaParams,
   onMediaParamsChange,
+  tools = [],
+  onToggleTool,
   guideAttach = false,
   guideSend = false,
 }: {
@@ -42,6 +44,9 @@ export function ComposerView({
   mediaSpecs?: Record<string, MediaParamSpec>;
   mediaParams: MediaParams;
   onMediaParamsChange: (next: MediaParams) => void;
+  /** Hosted builtin-tool toggle chips, gated to the selected model's support. */
+  tools?: Array<{ id: string; label: string; icon: string; enabled: boolean; supported: boolean }>;
+  onToggleTool?: (id: string) => void;
   /** Guided-prefill highlights (docs-launched session). */
   guideAttach?: boolean;
   guideSend?: boolean;
@@ -76,6 +81,26 @@ export function ComposerView({
           }
         }}
       />
+      {tools.length > 0 && (
+        <div className="composer-tools">
+          {tools.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              className={`tool-chip${t.enabled ? ' tool-chip-on' : ''}`}
+              disabled={!t.supported}
+              title={
+                t.supported
+                  ? `${t.enabled ? 'Disable' : 'Enable'} ${t.label} for this model`
+                  : `${t.label} is not available for the selected model`
+              }
+              onClick={() => onToggleTool?.(t.id)}
+            >
+              {t.icon} {t.label}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="composer-actions">
         <button
           type="button"

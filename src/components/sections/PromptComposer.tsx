@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { BUILTIN_TOOLS } from '../../lib/constants';
 import { downloadBytes } from '../../lib/download';
 import { historyZip } from '../../lib/export-history';
 import { isMediaModel } from '../../lib/media';
@@ -12,7 +13,8 @@ import { ComposerView } from './ComposerView';
 export function PromptComposer() {
   const { send, stop, busy, draft, clearDraft, turns, pendingAttachments, consumeAttachments } =
     useChat();
-  const { engine, selectedModel, setSelectedModel, members, guide, endGuide } = useEngine();
+  const { engine, selectedModel, setSelectedModel, members, guide, endGuide, settings, updateSettings } =
+    useEngine();
   // Seed the prompt from a docs-launched `?ex=` descriptor (prefill, never auto-send).
   const [text, setText] = useState(() => readPreload()?.prompt ?? '');
   const [files, setFiles] = useState<File[]>([]);
@@ -42,6 +44,33 @@ export function PromptComposer() {
     const info = selectedModel ? findModel(engine, selectedModel) : undefined;
     return info && isMediaModel(info) ? info.mediaParams : undefined;
   }, [engine, selectedModel]);
+
+  // Hosted builtin-tool chips, gated to what the selected model supports (from the
+  // catalog's builtinTools). Hidden entirely for models that support none.
+  const toolChips = useMemo(() => {
+    const supported =
+      (selectedModel ? findModel(engine, selectedModel)?.capabilities.builtinTools : undefined) ?? [];
+    if (supported.length === 0) return [];
+    return BUILTIN_TOOLS.map((t) => ({
+      id: t.id,
+      label: t.label,
+      icon: t.icon,
+      enabled: settings.enabledTools[t.setting],
+      supported: supported.includes(t.id),
+    }));
+  }, [engine, selectedModel, settings.enabledTools]);
+
+  const toggleTool = (id: string) => {
+    const spec = BUILTIN_TOOLS.find((t) => t.id === id);
+    if (!spec) return;
+    updateSettings({
+      ...settings,
+      enabledTools: {
+        ...settings.enabledTools,
+        [spec.setting]: !settings.enabledTools[spec.setting],
+      },
+    });
+  };
 
   // Clear any chosen params when the model changes — they're model-specific.
   // biome-ignore lint/correctness/useExhaustiveDependencies: reset on model switch
@@ -101,6 +130,8 @@ export function PromptComposer() {
       mediaSpecs={mediaSpecs}
       mediaParams={mediaParams}
       onMediaParamsChange={setMediaParams}
+      tools={toolChips}
+      onToggleTool={toggleTool}
     />
   );
 }
