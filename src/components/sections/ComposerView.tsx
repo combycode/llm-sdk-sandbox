@@ -1,5 +1,5 @@
 import type { MediaParamSpec } from '@combycode/llm-sdk';
-import type { RefObject } from 'react';
+import { type RefObject, useEffect, useMemo } from 'react';
 import type { MediaParams } from '../../types/media';
 import { FileChip } from '../../ui/FileChip';
 import { MediaParamsControl } from '../../ui/MediaParamsControl';
@@ -51,6 +51,18 @@ export function ComposerView({
   guideAttach?: boolean;
   guideSend?: boolean;
 }) {
+  // Preview thumbnails for pending image attachments (object URLs, revoked on change).
+  const previews = useMemo(
+    () => files.map((f) => (f.type.startsWith('image/') ? URL.createObjectURL(f) : undefined)),
+    [files],
+  );
+  useEffect(
+    () => () => {
+      for (const u of previews) if (u) URL.revokeObjectURL(u);
+    },
+    [previews],
+  );
+
   return (
     <div className="composer">
       {mediaSpecs && (
@@ -62,7 +74,7 @@ export function ComposerView({
             <FileChip
               // biome-ignore lint/suspicious/noArrayIndexKey: pending files have no id
               key={i}
-              file={{ name: f.name, mime: f.type, size: f.size }}
+              file={{ name: f.name, mime: f.type, size: f.size, previewUrl: previews[i] }}
               onRemove={() => onRemoveFile(i)}
             />
           ))}
