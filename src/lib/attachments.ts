@@ -1,5 +1,5 @@
-import { bytesToBase64, type ContentPart } from '@combycode/llm-sdk';
-import type { AttachedFile, MediaItem } from '../types/chat';
+import { bytesToBase64, type ContentPart, type DataSource } from '@combycode/llm-sdk';
+import type { AttachedFile, ComposerAttachment, MediaItem } from '../types/chat';
 
 const MIME_EXT: Record<string, string> = {
   'image/png': 'png',
@@ -23,13 +23,76 @@ export function mimeExt(mime: string): string {
 
 let attachSeq = 0;
 
-/** Reconstruct a browser File from a generated media item (data:/blob: URL), so
- *  it can be fed back into the composer as a source image for the next request. */
-export async function mediaItemToFile(item: MediaItem): Promise<File> {
-  const blob = await (await fetch(item.url)).blob();
-  const mime = item.mime || blob.type || 'application/octet-stream';
+/** Reference a generated media item for re-attachment — a pure UI action, NO
+ *  network. The bytes (if the target model needs them) are resolved later, at
+ *  send time, by `resolveMediaSource`. */
+export function mediaItemToRef(item: MediaItem): ComposerAttachment {
   attachSeq += 1;
-  return new File([blob], `${item.kind}-${attachSeq}.${mimeExt(mime)}`, { type: mime });
+  return {
+    kind: 'ref',
+    url: item.url,
+    mime: item.mime,
+    media: item.kind,
+    name: `${item.kind}-${attachSeq}.${mimeExt(item.mime)}`,
+  };
+}
+
+export function attMime(att: ComposerAttachment): string {
+  return att.kind === 'file' ? att.file.type || 'application/octet-stream' : att.mime;
+}
+export function attName(att: ComposerAttachment): string {
+  return att.kind === 'file' ? att.file.name : att.name;
+}
+export function attSize(att: ComposerAttachment): number {
+  return att.kind === 'file' ? att.file.size : 0;
+}
+/** URL for a composer chip thumbnail (image only): local file → object URL,
+ *  generated ref → its own URL. Caller revokes object URLs it created. */
+export function attPreviewUrl(att: ComposerAttachment): string | undefined {
+  if (!attMime(att).startsWith('image/')) return undefined;
+  return att.kind === 'file' ? URL.createObjectURL(att.file) : att.url;
+}
+
+/** Providers whose media-SOURCE inputs accept a plain URL (their server fetches
+ *  it), so we can hand over a remote URL without downloading bytes in-browser. */
+const URI_SOURCE_PROVIDERS = new Set(['xai']);
+export function providerAcceptsUriSource(provider: string): boolean {
+  return URI_SOURCE_PROVIDERS.has(provider);
+}
+
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return 'a remote host';
+  }
+}
+
+/** Resolve an attachment to a DataSource for a media SOURCE input (image-edit,
+ *  image-to-video, video extend/edit), routed by the target provider:
+ *   - local file          → base64 (bytes in hand)
+ *   - ref + provider URL-ok → { type:'url' } (no download; provider fetches it)
+ *   - ref + needs bytes     → fetch (only same-origin data:/blob:), else throw. */
+export async function resolveMediaSource(
+  att: ComposerAttachment,
+  provider: string,
+): Promise<DataSource> {
+  if (att.kind === 'file') {
+    const bytes = new Uint8Array(await att.file.arrayBuffer());
+    return { type: 'base64', mimeType: attMime(att), data: bytesToBase64(bytes) };
+  }
+  if (providerAcceptsUriSource(provider)) {
+    return { type: 'url', url: att.url };
+  }
+  if (att.url.startsWith('data:') || att.url.startsWith('blob:')) {
+    const bytes = new Uint8Array(await (await fetch(att.url)).arrayBuffer());
+    return { type: 'base64', mimeType: att.mime, data: bytesToBase64(bytes) };
+  }
+  throw new Error(
+    `The selected model needs the file's bytes, but the attached ${att.media} is only ` +
+      `available as a cross-origin URL (${hostOf(att.url)}) the browser can't read. ` +
+      `Extend/edit it with an xAI model (e.g. grok-imagine-video), or upload the file directly.`,
+  );
 }
 
 export interface PreparedAttachment {
@@ -37,12 +100,26 @@ export interface PreparedAttachment {
   file: AttachedFile;
 }
 
-/** Turn a browser File into a library content part (+ display metadata). */
-export async function prepareAttachment(file: File): Promise<PreparedAttachment> {
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  const data = bytesToBase64(bytes);
-  const mimeType = file.type || 'application/octet-stream';
-  const source = { type: 'base64' as const, mimeType, data };
+/** Turn a composer attachment into a library content part (+ display metadata)
+ *  for the CHAT path. Local files embed their bytes; refs pass their URL as the
+ *  source (fetching bytes only for same-origin data:/blob:). */
+export async function prepareAttachment(att: ComposerAttachment): Promise<PreparedAttachment> {
+  const mimeType = attMime(att);
+  let source: DataSource;
+  let previewUrl: string | undefined;
+
+  if (att.kind === 'file') {
+    const data = bytesToBase64(new Uint8Array(await att.file.arrayBuffer()));
+    source = { type: 'base64', mimeType, data };
+    previewUrl = mimeType.startsWith('image/') ? `data:${mimeType};base64,${data}` : undefined;
+  } else if (att.url.startsWith('data:') || att.url.startsWith('blob:')) {
+    const data = bytesToBase64(new Uint8Array(await (await fetch(att.url)).arrayBuffer()));
+    source = { type: 'base64', mimeType, data };
+    previewUrl = att.media === 'image' ? att.url : undefined;
+  } else {
+    source = { type: 'url', url: att.url };
+    previewUrl = att.media === 'image' ? att.url : undefined;
+  }
 
   let part: ContentPart;
   if (mimeType.startsWith('image/')) part = { type: 'image', source };
@@ -50,6 +127,5 @@ export async function prepareAttachment(file: File): Promise<PreparedAttachment>
   else if (mimeType.startsWith('video/')) part = { type: 'video', source };
   else part = { type: 'document', source };
 
-  const previewUrl = mimeType.startsWith('image/') ? `data:${mimeType};base64,${data}` : undefined;
-  return { part, file: { name: file.name, mime: mimeType, size: file.size, previewUrl } };
+  return { part, file: { name: attName(att), mime: mimeType, size: attSize(att), previewUrl } };
 }

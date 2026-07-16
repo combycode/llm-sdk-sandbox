@@ -1220,6 +1220,35 @@ code {
   cursor: not-allowed;
 }
 
+/* ---- Attached-video op toggle (Edit | Extend) ---- */
+.video-mode {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.video-mode-label {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.video-mode-btn {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 100px;
+  padding: 4px 12px;
+  font-size: 0.8rem;
+  color: var(--muted);
+  cursor: pointer;
+}
+.video-mode-btn:hover {
+  border-color: var(--accent);
+}
+.video-mode-on {
+  background: var(--accent-2);
+  border-color: var(--accent);
+  color: var(--text);
+}
+
 /* ---- Tool activity + output files (transcript) ---- */
 .turn-tools {
   display: flex;

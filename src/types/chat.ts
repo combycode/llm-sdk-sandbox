@@ -15,6 +15,14 @@ export interface AttachedFile {
   previewUrl?: string;
 }
 
+/** What the composer holds pending send: either a locally-uploaded File (bytes in
+ *  hand) or a reference to an earlier generated item (URL only — its bytes may be
+ *  cross-origin and unreadable in the browser). Attaching is a pure UI action; the
+ *  send-time resolver turns this into a DataSource per the target provider. */
+export type ComposerAttachment =
+  | { kind: 'file'; file: File }
+  | { kind: 'ref'; url: string; mime: string; media: MediaItem['kind']; name: string };
+
 /** A file a hosted tool produced (e.g. a code-execution chart/CSV), fetched via
  *  `retrieveFile` into a blob: URL ready to preview or download. */
 export interface OutputFile {
@@ -71,6 +79,8 @@ export interface ChatTurn {
   /** Assistant turns: the model that produced them ("provider/slug"). */
   model?: string;
   pending?: boolean;
+  /** Async media (video) generation progress 0–100, while pending. */
+  mediaProgress?: number;
   error?: string;
   /** Assistant turns: tokens/cost/time once the response completes. */
   stats?: TurnStats;

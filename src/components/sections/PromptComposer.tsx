@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { attMime } from '../../lib/attachments';
 import { BUILTIN_TOOLS } from '../../lib/constants';
 import { downloadBytes } from '../../lib/download';
 import { historyZip } from '../../lib/export-history';
-import { isMediaModel } from '../../lib/media';
+import { isMediaModel, mediaKind } from '../../lib/media';
 import { findModel } from '../../lib/models';
 import { readPreload } from '../../lib/preload';
 import { useChat } from '../../state/ChatContext';
 import { useEngine } from '../../state/EngineContext';
+import type { ComposerAttachment } from '../../types/chat';
 import type { MediaParams } from '../../types/media';
 import { ComposerView } from './ComposerView';
 
@@ -17,7 +19,7 @@ export function PromptComposer() {
     useEngine();
   // Seed the prompt from a docs-launched `?ex=` descriptor (prefill, never auto-send).
   const [text, setText] = useState(() => readPreload()?.prompt ?? '');
-  const [files, setFiles] = useState<File[]>([]);
+  const [files, setFiles] = useState<ComposerAttachment[]>([]);
   const [mediaParams, setMediaParams] = useState<MediaParams>({});
   const [mentionWarning, setMentionWarning] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -44,6 +46,16 @@ export function PromptComposer() {
     const info = selectedModel ? findModel(engine, selectedModel) : undefined;
     return info && isMediaModel(info) ? info.mediaParams : undefined;
   }, [engine, selectedModel]);
+
+  // Video op when a clip is attached to an extension-capable video model:
+  // 'edit' (default) | 'extend'. Gated on the catalog's per-model videoExtension
+  // flag so it only shows where the provider actually accepts extend/edit.
+  const [videoMode, setVideoMode] = useState<'edit' | 'extend'>('edit');
+  const showVideoMode = useMemo(() => {
+    const info = selectedModel ? findModel(engine, selectedModel) : undefined;
+    const hasVideo = files.some((f) => attMime(f).startsWith('video/'));
+    return hasVideo && mediaKind(info) === 'video' && info?.capabilities.videoExtension === true;
+  }, [engine, selectedModel, files]);
 
   // Hosted builtin-tool chips, gated to what the selected model supports (from the
   // catalog's builtinTools). Hidden entirely for models that support none.
@@ -100,7 +112,9 @@ export function PromptComposer() {
     const f = files;
     setText('');
     setFiles([]);
-    await send(t, f, mediaParams);
+    // Fold the chosen video op into params only when the toggle is relevant.
+    const params = showVideoMode ? { ...mediaParams, videoMode } : mediaParams;
+    await send(t, f, params);
   };
 
   const canSend = !busy && !!selectedModel && (text.trim().length > 0 || files.length > 0);
@@ -118,7 +132,12 @@ export function PromptComposer() {
       files={files}
       fileInputRef={fileInputRef}
       onPickFiles={() => fileInputRef.current?.click()}
-      onFilesChosen={(list) => setFiles((prev) => [...prev, ...Array.from(list)])}
+      onFilesChosen={(list) =>
+        setFiles((prev) => [
+          ...prev,
+          ...Array.from(list).map((file) => ({ kind: 'file' as const, file })),
+        ])
+      }
       onRemoveFile={(i) => setFiles((prev) => prev.filter((_, idx) => idx !== i))}
       onSubmit={submit}
       onStop={stop}
@@ -130,6 +149,9 @@ export function PromptComposer() {
       mediaSpecs={mediaSpecs}
       mediaParams={mediaParams}
       onMediaParamsChange={setMediaParams}
+      videoMode={videoMode}
+      onVideoModeChange={setVideoMode}
+      showVideoMode={showVideoMode}
       tools={toolChips}
       onToggleTool={toggleTool}
     />

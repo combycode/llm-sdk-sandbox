@@ -112,7 +112,10 @@ export function Turn({ turn }: { turn: ChatTurn }) {
 
       {turn.pending && empty && (
         <div className="turn-pending">
-          <Spinner /> thinking…
+          <Spinner />{' '}
+          {turn.mediaProgress != null
+            ? `generating video… ${Math.round(turn.mediaProgress)}%`
+            : 'thinking…'}
         </div>
       )}
       {turn.error && <div className="turn-error">⚠ {turn.error}</div>}

@@ -1,5 +1,7 @@
 import type { MediaParamSpec } from '@combycode/llm-sdk';
 import { type RefObject, useEffect, useMemo } from 'react';
+import { attMime, attName, attPreviewUrl } from '../../lib/attachments';
+import type { ComposerAttachment } from '../../types/chat';
 import type { MediaParams } from '../../types/media';
 import { FileChip } from '../../ui/FileChip';
 import { MediaParamsControl } from '../../ui/MediaParamsControl';
@@ -22,6 +24,9 @@ export function ComposerView({
   mediaSpecs,
   mediaParams,
   onMediaParamsChange,
+  videoMode,
+  onVideoModeChange,
+  showVideoMode = false,
   tools = [],
   onToggleTool,
   guideAttach = false,
@@ -29,7 +34,7 @@ export function ComposerView({
 }: {
   text: string;
   onTextChange: (v: string) => void;
-  files: File[];
+  files: ComposerAttachment[];
   fileInputRef: RefObject<HTMLInputElement | null>;
   onPickFiles: () => void;
   onFilesChosen: (list: FileList) => void;
@@ -44,6 +49,11 @@ export function ComposerView({
   mediaSpecs?: Record<string, MediaParamSpec>;
   mediaParams: MediaParams;
   onMediaParamsChange: (next: MediaParams) => void;
+  /** Video source op when a video is attached: 'edit' (default) or 'extend'. */
+  videoMode?: 'edit' | 'extend';
+  onVideoModeChange?: (mode: 'edit' | 'extend') => void;
+  /** Show the Edit/Extend toggle (a video is attached to a capable video model). */
+  showVideoMode?: boolean;
   /** Hosted builtin-tool toggle chips, gated to the selected model's support. */
   tools?: Array<{ id: string; label: string; icon: string; enabled: boolean; supported: boolean }>;
   onToggleTool?: (id: string) => void;
@@ -51,14 +61,13 @@ export function ComposerView({
   guideAttach?: boolean;
   guideSend?: boolean;
 }) {
-  // Preview thumbnails for pending image attachments (object URLs, revoked on change).
-  const previews = useMemo(
-    () => files.map((f) => (f.type.startsWith('image/') ? URL.createObjectURL(f) : undefined)),
-    [files],
-  );
+  // Preview thumbnails for pending image attachments. Local files get an object
+  // URL (revoked on change); generated refs reuse their own data:/http URL.
+  const previews = useMemo(() => files.map(attPreviewUrl), [files]);
   useEffect(
     () => () => {
-      for (const u of previews) if (u) URL.revokeObjectURL(u);
+      // Only object URLs (blob:) need revoking; data:/http refs are no-ops.
+      for (const u of previews) if (u?.startsWith('blob:')) URL.revokeObjectURL(u);
     },
     [previews],
   );
@@ -74,9 +83,29 @@ export function ComposerView({
             <FileChip
               // biome-ignore lint/suspicious/noArrayIndexKey: pending files have no id
               key={i}
-              file={{ name: f.name, mime: f.type, size: f.size, previewUrl: previews[i] }}
+              file={{ name: attName(f), mime: attMime(f), size: 0, previewUrl: previews[i] }}
               onRemove={() => onRemoveFile(i)}
             />
+          ))}
+        </div>
+      )}
+      {showVideoMode && (
+        <div className="video-mode">
+          <span className="video-mode-label">Attached video:</span>
+          {(['edit', 'extend'] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              className={`video-mode-btn${(videoMode ?? 'edit') === m ? ' video-mode-on' : ''}`}
+              onClick={() => onVideoModeChange?.(m)}
+              title={
+                m === 'edit'
+                  ? 'Modify the clip per your prompt (/v1/videos/edits)'
+                  : 'Continue the clip from its last frame (/v1/videos/extensions)'
+              }
+            >
+              {m === 'edit' ? 'Edit' : 'Extend'}
+            </button>
           ))}
         </div>
       )}

@@ -7,15 +7,20 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import type { BuiltinTool, Content, Message, Tool } from '@combycode/llm-sdk';
+import type { BuiltinTool, Content, DataSource, Message, Tool } from '@combycode/llm-sdk';
 import { bucketError, trackRunFailed, trackRunStarted, trackRunSucceeded } from '../lib/analytics';
-import { mediaItemToFile, prepareAttachment } from '../lib/attachments';
+import {
+  attMime,
+  mediaItemToRef,
+  prepareAttachment,
+  resolveMediaSource,
+} from '../lib/attachments';
 import { BUILTIN_TOOLS } from '../lib/constants';
 import { generateMedia, isMediaModel } from '../lib/media';
 import { findModel } from '../lib/models';
 import { projectConversation } from '../lib/projection';
 import { streamChat } from '../lib/run';
-import type { ChatTurn, MediaItem, TurnStats } from '../types/chat';
+import type { ChatTurn, ComposerAttachment, MediaItem, TurnStats } from '../types/chat';
 import type { MediaParams } from '../types/media';
 import { useEngine } from './EngineContext';
 
@@ -26,10 +31,10 @@ const mergeStats = (t: ChatTurn, patch: Partial<TurnStats>): TurnStats => ({
   ...patch,
 });
 
-/** Prompt + files handed back to the composer when a request is stopped. */
+/** Prompt + attachments handed back to the composer when a request is stopped. */
 export interface Draft {
   text: string;
-  files: File[];
+  files: ComposerAttachment[];
 }
 
 export interface SessionStats {
@@ -43,17 +48,17 @@ interface ChatContextValue {
   turns: ChatTurn[];
   busy: boolean;
   sessionStats: SessionStats;
-  send: (text: string, files: File[], mediaParams?: MediaParams) => Promise<void>;
+  send: (text: string, files: ComposerAttachment[], mediaParams?: MediaParams) => Promise<void>;
   /** Abort the in-flight request and hand its prompt back via `draft`. */
   stop: () => void;
   reset: () => void;
   /** Set after `stop()` so the composer can refill; cleared via `clearDraft`. */
   draft: Draft | null;
   clearDraft: () => void;
-  /** Files queued from the transcript ("attach to prompt"); composer drains them. */
-  pendingAttachments: File[];
-  /** Reconstruct a File from a generated media item and queue it for the composer. */
-  attachToPrompt: (item: MediaItem) => Promise<void>;
+  /** Attachments queued from the transcript ("attach to prompt"); composer drains them. */
+  pendingAttachments: ComposerAttachment[];
+  /** Reference a generated media item and queue it for the composer (no fetch). */
+  attachToPrompt: (item: MediaItem) => void;
   /** Composer calls this once it has absorbed `pendingAttachments`. */
   consumeAttachments: () => void;
 }
@@ -68,7 +73,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [busy, setBusy] = useState(false);
   const [draft, setDraft] = useState<Draft | null>(null);
-  const [pendingAttachments, setPendingAttachments] = useState<File[]>([]);
+  const [pendingAttachments, setPendingAttachments] = useState<ComposerAttachment[]>([]);
   const turnsRef = useRef<ChatTurn[]>([]);
   turnsRef.current = turns;
 
@@ -86,9 +91,10 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   };
   const clearDraft = () => setDraft(null);
 
-  const attachToPrompt = async (item: MediaItem) => {
-    const file = await mediaItemToFile(item);
-    setPendingAttachments((prev) => [...prev, file]);
+  // Pure UI: queue a reference to the generated item — no network. The bytes (if
+  // the eventual target model needs them) are resolved at send time.
+  const attachToPrompt = (item: MediaItem) => {
+    setPendingAttachments((prev) => [...prev, mediaItemToRef(item)]);
   };
   const consumeAttachments = () => setPendingAttachments([]);
 
@@ -132,6 +138,20 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     return unsub;
   }, [engine]);
 
+  // Async video (extend/edit/generate) reports progress each poll — route it to
+  // the in-flight assistant turn so the UI can show a bar.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: updateTurn is stable
+  useEffect(() => {
+    const unsub = engine.hooks.on('onMediaProgress', ({ progress }) => {
+      const inflight = inflightRef.current;
+      if (!inflight || progress == null) return;
+      updateTurn(inflight.assistantId, (t) =>
+        t.role === 'assistant' ? { ...t, mediaProgress: progress } : t,
+      );
+    });
+    return unsub;
+  }, [engine]);
+
   const stop = () => {
     const inflight = inflightRef.current;
     abortRef.current?.abort();
@@ -145,7 +165,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     setBusy(false);
   };
 
-  const send = async (text: string, files: File[], mediaParams: MediaParams = {}) => {
+  const send = async (text: string, files: ComposerAttachment[], mediaParams: MediaParams = {}) => {
     if (busy || !selectedModel) return;
 
     // Safe analytics: provider + model only, never prompt/response/key.
@@ -214,9 +234,26 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
     try {
       if (info && isMediaModel(info)) {
-        // An attached image is the source for image-edit / image-to-video.
-        const sourceImage = files.find((f) => f.type.startsWith('image/'));
-        const item = await generateMedia(selectedModel, info, text, engine, mediaParams, sourceImage);
+        // Attached image → image-edit / image-to-video; attached video → extend.
+        // Resolve the source HERE (send time) per the target provider: xAI takes
+        // a URL, others need bytes (throws a clear error if it can't get them).
+        const imgAtt = files.find((f) => attMime(f).startsWith('image/'));
+        const vidAtt = files.find((f) => attMime(f).startsWith('video/'));
+        const srcAtt = imgAtt ?? vidAtt;
+        // A video source needs a model that accepts extend/edit (catalog flag).
+        if (srcAtt && srcAtt === vidAtt && info.capabilities.videoExtension !== true) {
+          throw new Error(
+            `${selectedModel} can't extend or edit video — it only generates. ` +
+              `Switch to a model that supports it (e.g. xai/grok-imagine-video).`,
+          );
+        }
+        const source: { sourceImage?: DataSource; sourceVideo?: DataSource } = {};
+        if (srcAtt) {
+          const ds = await resolveMediaSource(srcAtt, provider);
+          if (srcAtt === vidAtt) source.sourceVideo = ds;
+          else source.sourceImage = ds;
+        }
+        const item = await generateMedia(selectedModel, info, text, engine, mediaParams, source);
         if (controller.signal.aborted) return;
         finalize(() => ({ media: [item] }));
         trackRunSucceeded(provider, model);

@@ -12,10 +12,11 @@ import {
 import type { MediaItem } from '../types/chat';
 import type { MediaKind, MediaParams } from '../types/media';
 
-/** A browser File → base64 DataSource for source-image (edit / image-to-video). */
-async function fileToDataSource(file: File): Promise<DataSource> {
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  return { type: 'base64', mimeType: file.type || 'image/png', data: bytesToBase64(bytes) };
+/** Already-resolved media source(s) for the request. The caller (send) picks
+ *  URL-vs-bytes per the target provider; here we just forward. */
+export interface MediaSource {
+  sourceImage?: DataSource;
+  sourceVideo?: DataSource;
 }
 
 const MEDIA_TYPES = new Set(['image', 'video', 'tts', 'audio']);
@@ -44,13 +45,14 @@ export async function generateMedia(
   prompt: string,
   engine: EngineHandle,
   params: MediaParams = {},
-  sourceFile?: File,
+  source: MediaSource = {},
 ): Promise<MediaItem> {
   const store = new MemoryMediaStore();
-  const media = createMediaOutput({ model, engine, store });
+  // Poll async video a bit faster than the 5s library default so the progress
+  // number + completion feel responsive (xAI's own progress is coarse).
+  const media = createMediaOutput({ model, engine, store, config: { pollIntervalMs: 2000 } });
   const kind = mediaKind(info);
-  // An attached image becomes the source for image-edit / image-to-video.
-  const sourceImage = sourceFile ? await fileToDataSource(sourceFile) : undefined;
+  const { sourceImage, sourceVideo } = source;
 
   const result =
     kind === 'image'
@@ -67,7 +69,15 @@ export async function generateMedia(
         ? await media.generateVideo({
             prompt,
             sourceImage,
-            params: params as VideoGenRequest['params'],
+            sourceVideo,
+            // A source video runs `edit` (default) or `extend` — chosen in the UI
+            // via params.videoMode; never hardcoded. No source video = generate.
+            params: {
+              ...(params as VideoGenRequest['params']),
+              ...(sourceVideo
+                ? { videoMode: ((params.videoMode as 'edit' | 'extend') || 'edit') }
+                : {}),
+            },
           })
         : await media.generateAudio({
             input: prompt,
@@ -87,5 +97,13 @@ export async function generateMedia(
       ? 'video'
       : 'audio';
 
-  return { kind: itemKind, mime, url: `data:${mime};base64,${bytesToBase64(loaded.data)}` };
+  // Async video (xAI) lives on a cross-origin bucket the browser can't byte-fetch
+  // (CORS), so the library hands back `sourceUrl` with empty bytes — play it
+  // directly (`<video src>` needs no CORS). Otherwise render the inline bytes.
+  const url =
+    loaded.data.length === 0 && loaded.meta.sourceUrl
+      ? loaded.meta.sourceUrl
+      : `data:${mime};base64,${bytesToBase64(loaded.data)}`;
+
+  return { kind: itemKind, mime, url };
 }
