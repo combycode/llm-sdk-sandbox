@@ -1,4 +1,4 @@
-/** 1.7 -> 2.1 migration smoke for the sandbox's OWN runtime paths.
+/** Upgrade smoke for the sandbox's OWN runtime paths.
  *
  *  typecheck, unit tests and a green build all pass without executing a single library
  *  call: they prove the types line up and the bundle compiles, not that a conversation
@@ -11,11 +11,30 @@
  *  firing in the sequence the UI assumes. Those are the things a major upgrade could
  *  break silently while everything still compiles.
  *
+ *  Kept current with each library upgrade: it last ran green against 2.2.0, whose span
+ *  rename and new telemetry surface the sandbox reads generically.
+ *
  *  Run: bun run migration-smoke.ts
  */
 import { createEngine } from '@combycode/llm-sdk';
+import { readFileSync } from 'node:fs';
 import { streamChat } from './src/lib/run';
 import type { MediaItem } from './src/types/chat';
+
+/** The version actually INSTALLED, read from the package on disk.
+ *
+ *  This was a hardcoded '2.1.0' string, so the smoke cheerfully reported the wrong
+ *  version against a 2.2.0 install — a number nobody had checked, printed next to
+ *  results that had. Reading it makes the mismatch impossible, and asserting on it turns
+ *  a decorative field into the check that catches a forgotten bump. */
+const libraryVersion = (
+  JSON.parse(
+    readFileSync(new URL('./node_modules/@combycode/llm-sdk/package.json', import.meta.url), 'utf8'),
+  ) as { version: string }
+).version;
+
+/** The major.minor this sandbox is written against; patch is free to float. */
+const EXPECTED_MINOR = '2.2';
 
 const fail = (m: string) => {
   console.error(`FAIL: ${m}`);
@@ -90,12 +109,16 @@ if (typeof engine.cost.total !== 'function') fail('engine.cost.total is gone —
 if (typeof engine.hooks.on !== 'function') fail('engine.hooks.on is gone — telemetry and logs would break');
 
 // A 2.1.0 addition the app does not use yet, checked so the panel can adopt it knowingly.
+if (!libraryVersion.startsWith(`${EXPECTED_MINOR}.`)) {
+  fail(`installed @combycode/llm-sdk is ${libraryVersion}, expected ${EXPECTED_MINOR}.x — bump the dependency or this file`);
+}
+
 const costs = engine.cost.total();
 const hasUnpriced = 'unpriced' in costs;
 
 console.log(
   JSON.stringify({
-    libraryVersion: '2.1.0',
+    libraryVersion,
     text: text.join(''),
     deltas: text.length,
     media: media.length,
