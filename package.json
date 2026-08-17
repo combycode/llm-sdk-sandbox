@@ -11,7 +11,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@combycode/llm-sdk": "^1.7.0",
+    "@combycode/llm-sdk": "^2.0.1",
     "marked": "18.0.5",
     "react": "19.2.7",
     "react-dom": "19.2.7"
