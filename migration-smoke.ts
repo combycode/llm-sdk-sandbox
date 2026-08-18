@@ -11,8 +11,11 @@
  *  firing in the sequence the UI assumes. Those are the things a major upgrade could
  *  break silently while everything still compiles.
  *
- *  Kept current with each library upgrade: it last ran green against 2.2.0, whose span
- *  rename and new telemetry surface the sandbox reads generically.
+ *  Kept current with each library upgrade: it last ran green against 2.2.2. Nothing in
+ *  2.2.1 (per-model Anthropic thinking shape) or 2.2.2 (Gemini function declarations move
+ *  to `parametersJsonSchema`) touches a path the sandbox takes — it sends only hosted
+ *  builtin tools, never function declarations — and 2.2.0's span rename and telemetry
+ *  surface the sandbox reads generically.
  *
  *  Run: bun run migration-smoke.ts
  */
@@ -108,7 +111,8 @@ if (order[order.length - 1] !== 'done') fail(`onDone must be last, got ${order.j
 if (typeof engine.cost.total !== 'function') fail('engine.cost.total is gone — the cost panel would break');
 if (typeof engine.hooks.on !== 'function') fail('engine.hooks.on is gone — telemetry and logs would break');
 
-// A 2.1.0 addition the app does not use yet, checked so the panel can adopt it knowingly.
+// Catches a forgotten dependency bump: the version printed below must be one this file
+// was actually written against, not whatever happens to be installed.
 if (!libraryVersion.startsWith(`${EXPECTED_MINOR}.`)) {
   fail(`installed @combycode/llm-sdk is ${libraryVersion}, expected ${EXPECTED_MINOR}.x — bump the dependency or this file`);
 }
