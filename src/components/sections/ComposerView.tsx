@@ -37,7 +37,8 @@ export function ComposerView({
   files: ComposerAttachment[];
   fileInputRef: RefObject<HTMLInputElement | null>;
   onPickFiles: () => void;
-  onFilesChosen: (list: FileList) => void;
+  /** Already materialised — never a live FileList. */
+  onFilesChosen: (files: File[]) => void;
   onRemoveFile: (index: number) => void;
   onSubmit: () => void;
   onStop: () => void;
@@ -165,8 +166,13 @@ export function ComposerView({
           multiple
           hidden
           onChange={(e) => {
-            if (e.target.files) onFilesChosen(e.target.files);
-            e.target.value = '';
+            // Copy the FileList BEFORE resetting the input. `e.target.files` is
+            // LIVE: clearing the value empties it, and the parent's state updater
+            // runs after this handler returns — so passing the FileList itself
+            // handed React an empty list and every attachment silently vanished.
+            const picked = e.target.files ? Array.from(e.target.files) : [];
+            e.target.value = ''; // let the same file be picked again
+            if (picked.length > 0) onFilesChosen(picked);
           }}
         />
         {busy ? (

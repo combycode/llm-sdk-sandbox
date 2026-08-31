@@ -1,3 +1,5 @@
+import type { FilterFacet } from '@combycode/llm-sdk';
+import { FilterPicker } from '../../ui/FilterPicker';
 import { SearchableDropdown, type DropdownOption } from '../../ui/SearchableDropdown';
 
 export function ModelSelector({
@@ -8,6 +10,7 @@ export function ModelSelector({
   browseOptions,
   query,
   onQueryChange,
+  facets,
   smartBest,
   smartRanked,
   status,
@@ -21,6 +24,8 @@ export function ModelSelector({
   browseOptions: DropdownOption[];
   query: string;
   onQueryChange: (q: string) => void;
+  /** The filter vocabulary, from the library — never a list written here. */
+  facets: FilterFacet[];
   smartBest: string | null;
   smartRanked: string[];
   status: string;
@@ -58,11 +63,11 @@ export function ModelSelector({
         />
       ) : (
         <div className="smart">
-          <input
-            className="smart-query"
-            placeholder="type:chat; vision; cheap"
-            value={query}
-            onChange={(e) => onQueryChange(e.target.value)}
+          <FilterPicker
+            facets={facets}
+            query={query}
+            onQueryChange={onQueryChange}
+            matchCount={smartRanked.length}
           />
           {smartRanked.length > 0 && (
             <ul className="smart-list">

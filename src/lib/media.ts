@@ -27,6 +27,17 @@ export function isMediaModel(info: ModelInfo | undefined): boolean {
   return info.mediaOnly === true || MEDIA_TYPES.has(info.type ?? '');
 }
 
+/** A model whose job is to READ audio — speech-to-text.
+ *
+ *  Not a media model (it produces text, not media) and not a chat model either:
+ *  it has its own endpoint. It used to fall through to the chat path, so picking
+ *  one and pressing send produced "The requested model 'gpt-transcribe' is not
+ *  supported with the Responses API" — an error about our routing, dressed up as
+ *  a fact about the model. */
+export function isTranscribeModel(info: ModelInfo | undefined): boolean {
+  return info?.type === 'stt';
+}
+
 /** The output kind a media model produces, for choosing param controls. */
 export function mediaKind(info: ModelInfo | undefined): MediaKind {
   const t = info?.type ?? 'image';

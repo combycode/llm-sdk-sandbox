@@ -7,6 +7,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import { transcribe } from '@combycode/llm-sdk';
 import type { BuiltinTool, Content, DataSource, Message, Tool } from '@combycode/llm-sdk';
 import { bucketError, trackRunFailed, trackRunStarted, trackRunSucceeded } from '../lib/analytics';
 import {
@@ -16,7 +17,7 @@ import {
   resolveMediaSource,
 } from '../lib/attachments';
 import { BUILTIN_TOOLS } from '../lib/constants';
-import { generateMedia, isMediaModel } from '../lib/media';
+import { generateMedia, isMediaModel, isTranscribeModel } from '../lib/media';
 import { findModel } from '../lib/models';
 import { projectConversation } from '../lib/projection';
 import { streamChat } from '../lib/run';
@@ -65,8 +66,16 @@ interface ChatContextValue {
 
 const Ctx = createContext<ChatContextValue | null>(null);
 
-let counter = 0;
-const newId = () => `t${++counter}`;
+/** Turn ids must be unique for the LIFE OF THE PAGE, not the life of the module.
+ *
+ *  This was `t${++counter}` over a module-scope counter, and `updateTurn` writes
+ *  to EVERY turn whose id matches — so two turns sharing an id both receive the
+ *  same text. Re-evaluating the module resets the counter while the turns already
+ *  on screen keep their old ids, which is exactly what a hot reload does: mid-test
+ *  editing put one model's answer under another model's question. Users never hit
+ *  it (no HMR in a build, and a reload clears the turns), but an id that can
+ *  collide is a bug waiting for a second reason to happen. */
+const newId = () => crypto.randomUUID();
 
 export function ChatProvider({ children }: { children: ReactNode }) {
   const { engine, selectedModel, settings } = useEngine();
@@ -233,6 +242,31 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     };
 
     try {
+      if (info && isTranscribeModel(info)) {
+        // Speech-to-text has its own endpoint; the chat path rejects these models
+        // outright ("not supported with the Responses API") -- an error about our
+        // routing wearing the shape of a fact about the model. It needs audio to
+        // read, so say that plainly rather than sending a doomed request.
+        const audioAtt = files.find((f) => attMime(f).startsWith('audio/'));
+        if (!audioAtt) {
+          throw new Error(`${selectedModel} transcribes audio - attach an audio file and send again.`);
+        }
+        const ds = await resolveMediaSource(audioAtt, provider);
+        if (ds.type !== 'base64') {
+          throw new Error('The attached audio could not be read as bytes in the browser.');
+        }
+        const bytes = Uint8Array.from(atob(ds.data), (c) => c.charCodeAt(0));
+        const res = await transcribe({
+          model: selectedModel,
+          apiKey: engine.apiKeys[provider as keyof typeof engine.apiKeys],
+          audio: { data: bytes, mimeType: attMime(audioAtt) },
+          engine,
+        });
+        if (controller.signal.aborted) return;
+        finalize(() => ({ text: res.text }));
+        return;
+      }
+
       if (info && isMediaModel(info)) {
         // Attached image → image-edit / image-to-video; attached video → extend.
         // Resolve the source HERE (send time) per the target provider: xAI takes

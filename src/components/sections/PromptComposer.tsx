@@ -132,11 +132,8 @@ export function PromptComposer() {
       files={files}
       fileInputRef={fileInputRef}
       onPickFiles={() => fileInputRef.current?.click()}
-      onFilesChosen={(list) =>
-        setFiles((prev) => [
-          ...prev,
-          ...Array.from(list).map((file) => ({ kind: 'file' as const, file })),
-        ])
+      onFilesChosen={(picked) =>
+        setFiles((prev) => [...prev, ...picked.map((file) => ({ kind: 'file' as const, file }))])
       }
       onRemoveFile={(i) => setFiles((prev) => prev.filter((_, idx) => idx !== i))}
       onSubmit={submit}
