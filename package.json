@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Browser sandbox SPA for @combycode/llm-sdk — chat with model switching, smart selection, file inputs, and media outputs.",
+  "description": "Browser sandbox SPA for @combycode/llm-sdk \u2014 chat with model switching, smart selection, file inputs, and media outputs.",
   "scripts": {
     "build": "tsc -b && vite build",
     "dev": "vite",
@@ -12,7 +12,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@combycode/llm-sdk": "^3.2.1",
+    "@combycode/llm-sdk": "^3.4.0",
     "marked": "18.0.5",
     "react": "19.2.7",
     "react-dom": "19.2.7"
