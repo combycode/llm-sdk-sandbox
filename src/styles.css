@@ -578,6 +578,12 @@ code {
 .turn-error {
   color: var(--error);
 }
+/* An adjustment the library made, not a failure -- muted, never the error colour. */
+.turn-notice {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 11px;
+}
 .turn-stats {
   margin-top: 6px;
   color: var(--muted);

@@ -119,6 +119,11 @@ export function Turn({ turn }: { turn: ChatTurn }) {
         </div>
       )}
       {turn.error && <div className="turn-error">⚠ {turn.error}</div>}
+      {turn.notices?.map((notice) => (
+        <div className="turn-notice" key={notice}>
+          ⓘ {notice}
+        </div>
+      ))}
 
       {turn.stats && (
         <div className="turn-stats">

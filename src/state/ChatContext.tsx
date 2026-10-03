@@ -10,6 +10,7 @@ import {
 import { transcribe } from '@combycode/llm-sdk';
 import type { BuiltinTool, Content, DataSource, Message, Tool } from '@combycode/llm-sdk';
 import { bucketError, trackRunFailed, trackRunStarted, trackRunSucceeded } from '../lib/analytics';
+import { appendNotice } from '../lib/notices';
 import {
   attMime,
   mediaItemToRef,
@@ -141,6 +142,28 @@ export function ChatProvider({ children }: { children: ReactNode }) {
                 cost,
               }),
             }
+          : t,
+      );
+    });
+    return unsub;
+  }, [engine]);
+
+  // The library tells us when it CHANGED the request we asked for -- most often
+  // a sampling parameter a model refuses. Routed to the in-flight turn because the
+  // alternative is a settings control that silently does nothing: SDK 3.4.0 stopped
+  // sending `temperature` to Anthropic models that answer 400 to it, so what used
+  // to surface as an error now succeeds with the setting quietly ignored.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: updateTurn is stable
+  useEffect(() => {
+    const unsub = engine.hooks.on('onWarning', (w) => {
+      if (w.code !== 'request_adjusted') return;
+      const inflight = inflightRef.current;
+      if (!inflight) return;
+      const message = String(w.message ?? '');
+      if (!message) return;
+      updateTurn(inflight.assistantId, (t) =>
+        t.role === 'assistant'
+          ? { ...t, notices: appendNotice(t.notices, message) }
           : t,
       );
     });

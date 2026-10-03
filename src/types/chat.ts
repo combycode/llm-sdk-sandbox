@@ -82,6 +82,12 @@ export interface ChatTurn {
   /** Async media (video) generation progress 0–100, while pending. */
   mediaProgress?: number;
   error?: string;
+  /** Assistant turns: adjustments the LIBRARY made to the request, from its
+   *  `request_adjusted` warnings -- e.g. a model that does not accept
+   *  `temperature` had it dropped. Not an `error`: the turn succeeded. Shown
+   *  because the alternative is a settings control that silently does
+   *  nothing, which is what SDK 3.4.0 turned a 400 into. */
+  notices?: string[];
   /** Assistant turns: tokens/cost/time once the response completes. */
   stats?: TurnStats;
 }
